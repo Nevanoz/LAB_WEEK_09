@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -15,33 +16,86 @@ import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.lab_week_09.ui.theme.LAB_WEEK_09Theme
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 
+// Data model
+data class Student(var name: String)
+
+// Main entry point
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Use setContent instead of setContentView
         setContent {
-            // Wrap with app theme
             LAB_WEEK_09Theme {
-                // Surface container using background color
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    // Call the Home composable
-                    Home(listOf("Tanu", "Tina", "Tono"))
-                }
+                val navController = rememberNavController()
+                App(navController)
             }
         }
     }
 }
 
+// Navigation graph
 @Composable
-fun Home(items: List<String>) {
-    // LazyColumn = RecyclerView equivalent in Compose
+fun App(navController: NavHostController) {
+    NavHost(navController = navController, startDestination = "home") {
+        composable("home") {
+            Home { navController.navigate("resultContent?listData=$it") }
+        }
+        composable(
+            "resultContent?listData={listData}",
+            arguments = listOf(navArgument("listData") { type = NavType.StringType })
+        ) {
+            ResultContent(it.arguments?.getString("listData").orEmpty())
+        }
+    }
+}
+
+// Home screen
+@Composable
+fun Home(navigateFromHomeToResult: (String) -> Unit) {
+    val listData = remember { mutableStateListOf(Student("Tanu"), Student("Tina"), Student("Tono")) }
+    var inputField by remember { mutableStateOf(Student("")) }
+
+    HomeContent(
+        listData = listData,
+        inputField = inputField,
+        onInputValueChange = { inputField = Student(it) },
+        onButtonClick = {
+            // Add only non-empty input
+            if (inputField.name.isNotBlank()) {
+                listData.add(inputField)
+                inputField = Student("")
+            }
+        },
+        navigateFromHomeToResult = {
+            // Convert list to JSON
+            val moshi = Moshi.Builder().build()
+            val type = Types.newParameterizedType(List::class.java, Student::class.java)
+            val adapter = moshi.adapter<List<Student>>(type)
+            val json = adapter.toJson(listData.toList())
+            navigateFromHomeToResult(json)
+        }
+    )
+}
+
+// Home content layout
+@Composable
+fun HomeContent(
+    listData: SnapshotStateList<Student>,
+    inputField: Student,
+    onInputValueChange: (String) -> Unit,
+    onButtonClick: () -> Unit,
+    navigateFromHomeToResult: () -> Unit
+) {
     LazyColumn {
-        // Header input area
         item {
             Column(
                 modifier = Modifier
@@ -51,32 +105,54 @@ fun Home(items: List<String>) {
             ) {
                 Text(text = stringResource(id = R.string.enter_item))
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Input field
                 TextField(
-                    value = "",
-                    onValueChange = { },
+                    value = inputField.name,
+                    onValueChange = { onInputValueChange(it) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
                 )
-
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Button
-                Button(onClick = { }) {
+                Button(onClick = onButtonClick) {
                     Text(text = stringResource(id = R.string.button_click))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = navigateFromHomeToResult) {
+                    Text(text = stringResource(id = R.string.button_navigate))
                 }
             }
         }
 
-        // List items
-        items(items) { item ->
+        items(listData) { item ->
             Column(
                 modifier = Modifier
                     .padding(vertical = 4.dp)
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(text = item)
+                Text(text = item.name)
+            }
+        }
+    }
+}
+
+// Result screen
+@Composable
+fun ResultContent(listData: String) {
+    val moshi = Moshi.Builder().build()
+    val type = Types.newParameterizedType(List::class.java, Student::class.java)
+    val adapter = moshi.adapter<List<Student>>(type)
+    val list = adapter.fromJson(listData) ?: emptyList()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Result Page")
+        Spacer(modifier = Modifier.height(8.dp))
+        LazyColumn {
+            items(list) { student ->
+                Text(text = student.name)
             }
         }
     }
@@ -86,6 +162,6 @@ fun Home(items: List<String>) {
 @Composable
 fun PreviewHome() {
     LAB_WEEK_09Theme {
-        Home(listOf("Tanu", "Tina", "Tono"))
+        Home {}
     }
 }
